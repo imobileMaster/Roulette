@@ -1,0 +1,349 @@
+//
+//  RouletteServer.m
+//  roulette
+//
+//  Created by Greg Ellis on 2015-03-31.
+//  Copyright (c) 2015 ellis. All rights reserved.
+//
+
+#import "RouletteServer.h"
+#import "RouletteTable.h"
+#import "RoulettePlayer.h"
+#import "RouletteChip.h"
+
+@implementation RouletteServer
+@synthesize delegate, socketIO;
+
+-(BOOL) isEmpty:(id)thing{
+    return thing == nil
+    || [thing isKindOfClass:[NSNull class]]
+    || ([thing respondsToSelector:@selector(length)]
+        && [(NSData *)thing length] == 0)
+    || ([thing respondsToSelector:@selector(count)]
+        && [(NSArray *)thing count] == 0);
+}
+
+-(id)init{
+    if(self = [super init]){
+        socketIO = nil;
+    }
+    
+    return self;
+}
+
+- (void) socketIO:(SocketIO *)socket didReceiveMessage:(SocketIOPacket *)packet
+{
+    //NSLog(@"didReceiveMessage >>> data: %@", packet.data);
+}
+
+- (void) socketIO:(SocketIO *)socket didReceiveEvent:(SocketIOPacket *)packet
+{
+    NSDictionary *response = packet.dataAsJSON;
+    if([[response objectForKey:@"name"] isEqualToString:@"spin"]){
+        
+        NSInteger number = [[[response objectForKey:@"args"] objectAtIndex:0] integerValue];
+        NSDictionary * dict = [NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithInteger:number], @"number", nil];
+        
+    }
+    else if([[response objectForKey:@"name"] isEqualToString:@"timeleft"]){
+        double percentleft = [[[response objectForKey:@"args"] objectAtIndex:2] doubleValue];
+    }
+    else if([[response objectForKey:@"name"] isEqualToString:@"placeyourbets"]){
+       
+    }
+    else if([[response objectForKey:@"name"] isEqualToString:@"joinedtable"]){
+        
+    }
+    else if([[response objectForKey:@"name"] isEqualToString:@"playerleft"]){
+        
+    }
+    else if([[response objectForKey:@"name"] isEqualToString:@"playerjoined"]){
+        
+    }
+    else if([[response objectForKey:@"name"] isEqualToString:@"gettablelist"]){
+        
+    }
+}
+
+-(void)socketIODidConnect:(SocketIO *)socket{
+    
+    NSLog(@"RouletteServer::DidConnect");
+    
+    if([delegate respondsToSelector:@selector(didConnect)])
+        [delegate didConnect];
+}
+
+-(void)socketIO:(SocketIO *)socket onError:(NSError *)error{
+    NSLog(@"RouletteServer::DidConnectFailedWithError");
+    //NSLog(@"RouletteServer::%@", [NSString stringWithFormat:@"error connecting: %@", error.localizedDescription]);
+    if([delegate respondsToSelector:@selector(didConnectFailedWithError:)])
+        [delegate didConnectFailedWithError:error];
+}
+
+
+-(void)connectToServer:(NSString *)host onPort:(NSInteger)port{
+    
+    if(socketIO==nil)
+        socketIO = [[SocketIO alloc] initWithDelegate:self];
+    
+    [socketIO connectToHost:host onPort:port];
+}
+
+
+-(void)getTableList:(void (^) (NSMutableArray* tables))onSuccess onError:(void (^) (NSError* error))onFailure{
+    SocketIOCallback listcb = ^(id argsData) {
+        
+        if(![self isEmpty:argsData]){
+        
+            NSData *data = [argsData dataUsingEncoding:NSUTF8StringEncoding];
+            
+            NSError *error;
+            id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&error];
+            
+            if(!error){
+                NSLog(@"%@", json);
+                
+                NSMutableArray* gametablelist = [[NSMutableArray alloc] init];
+                
+                for(NSDictionary* gametable in json){
+                    RouletteTable *table = [[RouletteTable alloc] init];
+                    table.name = [gametable objectForKey:@"name"];
+                    NSLog(@"%@", table.name);
+                    [gametablelist addObject:table];
+                }
+                
+                onSuccess(gametablelist);
+                //[delegate didGetTableList:gametablelist];
+            }
+            else{
+                onFailure(error);
+            }
+        }
+        else{
+            onFailure([NSError errorWithDomain:kRouletteServerErrorDomain code:RouletteServerError_NoResponse userInfo:nil]);
+        }
+    };
+    
+    [socketIO sendEvent:@"gettablelist" withData:nil andAcknowledge:listcb];
+}
+
+-(void)getTableList{
+    SocketIOCallback listcb = ^(id argsData) {
+        
+        if(![self isEmpty:argsData]){
+            NSData *data = [argsData dataUsingEncoding:NSUTF8StringEncoding];
+            
+            NSError *error;
+            id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&error];
+            
+            if(!error){
+                NSLog(@"%@", json);
+                
+                NSMutableArray* gametablelist = [[NSMutableArray alloc] init];
+                
+                for(NSDictionary* gametable in json){
+                    RouletteTable *table = [[RouletteTable alloc] init];
+                    table.name = [gametable objectForKey:@"name"];
+                    NSLog(@"%@", table.name);
+                    [gametablelist addObject:table];
+                }
+                
+                [delegate didGetTableList:gametablelist];
+            }
+            else{
+                [delegate didGetTableListFailedWithError:error];
+            }
+        }
+        else{
+            [delegate didGetTableListFailedWithError:[NSError errorWithDomain:kRouletteServerErrorDomain code:RouletteServerError_NoResponse userInfo:nil]];
+        }
+    };
+    
+    [socketIO sendEvent:@"gettablelist" withData:nil andAcknowledge:listcb];
+}
+
+-(void)seatPlayer:(RoulettePlayer*)player atTable:(RouletteTable*)table onSuccess:(void (^) (RouletteTable* table))onSuccess onFailure:(void (^) (NSError* error))onFailure{
+    SocketIOCallback cb = ^(id argsData) {
+        NSDictionary *response = argsData;
+        // do something with response
+        NSLog(@"callback: %@", response);
+        
+        if(![self isEmpty:response]){
+            NSData *data = [argsData dataUsingEncoding:NSUTF8StringEncoding];
+            NSError* error;
+            id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&error];
+            
+            if(!error){
+                RouletteTable *t = [[RouletteTable alloc] init];
+                t.name = [json objectForKey:@"tablename"];
+                t.number = [json objectForKey:@"tablenumber"];
+                t.players = [[NSMutableArray alloc] init];
+                t.gamestate = [json objectForKey:@"gamestate"];
+                t.history = [NSMutableArray arrayWithArray:[json objectForKey:@"history"]];
+                
+                for (id p in [json objectForKey:@"playerdata"]) {
+                    RoulettePlayer *player = [[RoulettePlayer alloc] init];
+                    player.name = [p objectForKey:@"name"];
+                    player.avatarURL = [p objectForKey:@"imageurl"];
+                    
+                    [table.players addObject:player];
+                }
+                
+                //[delegate didSeatPlayerAtTable:t];
+                onSuccess(t);
+            }
+            else{
+                //[delegate didSeatPlayerFailedWithError:error];
+                onFailure(error);
+            }
+        }
+        else{
+            onFailure([NSError errorWithDomain:kRouletteServerErrorDomain code:RouletteServerError_NoResponse userInfo:nil]);
+        }
+    };
+    
+    NSMutableDictionary *dict = [NSMutableDictionary dictionary];
+    [dict setObject:player.name forKey:@"name"];
+    [dict setObject:[NSNumber numberWithDouble:player.balance] forKey:@"balance"];
+    [dict setObject:[NSString stringWithFormat:@"%ld", (long)[table.number longValue]] forKey:@"tablenumber"];
+    [dict setObject:player.avatarURL forKey:@"imageurl"];
+    
+    [socketIO sendEvent:@"jointable" withData:dict andAcknowledge:cb];
+}
+
+/* seat a player at a table */
+-(void)seatPlayer:(RoulettePlayer*)player atTable:(RouletteTable*)table{
+    
+    SocketIOCallback cb = ^(id argsData) {
+        NSDictionary *response = argsData;
+        // do something with response
+        NSLog(@"callback: %@", response);
+        
+        if(![self isEmpty:response]){
+            NSData *data = [argsData dataUsingEncoding:NSUTF8StringEncoding];
+            NSError* error;
+            id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&error];
+            
+            if(json && !error){
+                RouletteTable *t = [[RouletteTable alloc] init];
+                t.name = [json objectForKey:@"tablename"];
+                t.number = [json objectForKey:@"tablenumber"];
+                t.players = [[NSMutableArray alloc] init];
+                t.gamestate = [json objectForKey:@"gamestate"];
+                t.history = [NSMutableArray arrayWithArray:[json objectForKey:@"history"]];
+                
+                for (id p in [json objectForKey:@"playerdata"]) {
+                    RoulettePlayer *player = [[RoulettePlayer alloc] init];
+                    player.name = [p objectForKey:@"name"];
+                    player.avatarURL = [p objectForKey:@"imageurl"];
+                    
+                    [table.players addObject:player];
+                }
+                
+                [delegate didSeatPlayerAtTable:t];
+            }
+            else{
+                [delegate didSeatPlayerFailedWithError:error];
+            }
+        }
+        else{
+            [delegate didSeatPlayerFailedWithError:[NSError errorWithDomain:kRouletteServerErrorDomain code:RouletteServerError_NoResponse userInfo:nil]];
+        }
+    };
+    
+    NSMutableDictionary *dict = [NSMutableDictionary dictionary];
+    [dict setObject:player.name forKey:@"name"];
+    [dict setObject:[NSNumber numberWithDouble:player.balance] forKey:@"balance"];
+    [dict setObject:[NSString stringWithFormat:@"%ld", (long)[table.number longValue]] forKey:@"tablenumber"];
+    [dict setObject:player.avatarURL forKey:@"imageurl"];
+}
+
+/* actions for a seated player */
+-(void)placeChip:(RouletteChip*)chip forPlayer:(RoulettePlayer*)player atPosition:(NSInteger)index forTable:(RouletteTable*)table{
+    
+}
+-(void)spinFinishedForPlayer:(RoulettePlayer*)player atTable:(RouletteTable*)table{
+    
+}
+-(void)removePlayer:(RoulettePlayer*)player fromTable:(RouletteTable*)table{
+    
+}
+
+
+
+
+/* roulette server events */
+
+-(void)didConnect{
+    
+}
+
+-(void)didConnectFailedWithError:(NSError *)error{
+    
+}
+
+
+-(void)didSeatPlayerAtTable:(RouletteTable*)table{
+    
+}
+
+-(void)didSeatPlayerFailedWithError:(NSError *)error{
+    
+}
+
+
+-(void)didRemovePlayerFromTable:(RouletteTable*)table{
+    
+}
+
+-(void)didRemovePlayerFailedWithError:(NSError *)error{
+    
+}
+
+
+-(void)didGetTableList:(NSArray* /* <RouletteTable> */)tables{
+    
+}
+
+-(void)didGetTableListFailedWithError:(NSError*)error{
+    
+}
+
+
+-(void)didPlaceChip:(RouletteChip*)chip forTable:(RouletteTable*)table{
+    
+}
+
+-(void)didPlaceChipFailedWithError:(NSError*)error{
+    
+}
+
+
+/* roulette table events */
+
+-(void)bettingRoundDidEndForTable:(RouletteTable*)table{
+    
+}
+
+-(void)bettingRoundDidBeginForTable:(RouletteTable*)table{
+    
+}
+
+-(void)bettingRoundTimeRemaining:(NSTimeInterval*)millisecondsleft forTable:(RouletteTable*)table{
+    
+}
+
+-(void)wheelSpinDidBeginWithWinningNumber:(NSInteger)number forTable:(RouletteTable*)table{
+    
+}
+
+-(void)playerDidJoin:(RoulettePlayer*)player forTable:(RouletteTable*)table{
+    
+}
+
+-(void)playerDidLeave:(RoulettePlayer*)player forTable:(RouletteTable*)table{
+    
+}
+
+
+@end

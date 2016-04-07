@@ -1,0 +1,27 @@
+//
+//  RouletteTable.h
+//  roulette
+//
+//  Created by Greg Ellis on 2015-03-31.
+//  Copyright (c) 2015 ellis. All rights reserved.
+//
+
+#import <Foundation/Foundation.h>
+
+@class RoulettePlayer;
+
+@interface RouletteTable : NSObject
+
+@property (nonatomic, assign) NSInteger tableId;
+@property (nonatomic, strong) NSString *name;
+@property (nonatomic, strong) NSString *gamestate;
+@property (nonatomic, strong) NSMutableArray *history;
+@property (nonatomic, strong) NSMutableArray *players;
+@property (nonatomic, strong) NSNumber *number;
+@property (nonatomic, strong) NSMutableArray* betplaces; //157 places
+
+
+-(void)seatPlayer:(RoulettePlayer*)player;
+-(void)removePlayer:(RoulettePlayer*)player;
+
+@end

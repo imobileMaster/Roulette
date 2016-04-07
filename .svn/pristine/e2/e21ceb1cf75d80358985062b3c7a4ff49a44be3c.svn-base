@@ -1,0 +1,197 @@
+//
+//  LobbyViewController.m
+//  roulette
+//
+//  Created by Greg Ellis on 2014-06-03.
+//  Copyright (c) 2014 ellis. All rights reserved.
+//
+
+#import "AppDelegate.h"
+#import "LobbyViewController.h"
+#import "Common.h"
+#import "GameTable.h"
+
+@interface LobbyViewController ()
+
+@end
+
+@implementation LobbyViewController
+
+-(void)launchGameTable:(GameTable*)table{
+    
+}
+
+-(CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section{
+    return 0.0000001;
+}
+
+-(CGFloat)tableView:(UITableView *)tableView heightForFooterInSection:(NSInteger)section{
+    return 5;
+}
+
+-(CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath{
+    return 40;
+}
+
+-(NSInteger)numberOfSectionsInTableView:(UITableView *)tableView{
+    return [gametablelist count];
+}
+
+-(NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section{
+    return [gametablelist count]>0?1:0;
+}
+
+-(void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath{
+    
+    NSInteger row = [indexPath section];
+    
+    SocketIOCallback cb = ^(id argsData) {
+        NSDictionary *response = argsData;
+        // do something with response
+        NSLog(@"callback: %@", response);
+        
+        if(![Common isEmpty:response]){
+            NSData *data = [argsData dataUsingEncoding:NSUTF8StringEncoding];
+            id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+            
+            if(json){
+                GameTable *table = [[GameTable alloc] init];
+                table.name = [json objectForKey:@"tablename"];
+                table.number = [json objectForKey:@"tablenumber"];
+                table.players = [[NSMutableArray alloc] init];
+                table.gamestate = [json objectForKey:@"gamestate"];
+                UIAppDelegate.g_seatindex = [[json objectForKey:@"seatindex"] integerValue];
+                table.history = [NSMutableArray arrayWithArray:[json objectForKey:@"history"]];
+                
+                
+                
+                for (id p in [json objectForKey:@"playerdata"]) {
+                    Player *player = [[Player alloc] init];
+                    player.name = [p objectForKey:@"name"];
+                    player.imageurl = [p objectForKey:@"imageurl"];
+                    player.seatindex = [[p objectForKey:@"seatindex"] integerValue];
+                    player.balance = [[p objectForKey:@"balance"] doubleValue];
+                    NSLog(@"%@ , %@", player.name, player.imageurl);
+                    
+                    [table.players addObject:player];
+                }
+
+                
+                
+                [self launchGameTable:table];
+            }
+        }
+    };
+    
+    NSMutableDictionary *dict = [NSMutableDictionary dictionary];
+    [dict setObject:UIAppDelegate.g_fbname forKey:@"name"];
+    [dict setObject:@"3300" forKey:@"balance"];
+    [dict setObject:[NSString stringWithFormat:@"%ld", (long)row] forKey:@"tablenumber"];
+    [dict setObject:UIAppDelegate.g_strAvatarURL==nil?[NSString stringWithFormat:@"guest:avatar%d.png", (arc4random()%4)+1]:UIAppDelegate.g_strAvatarURL forKey:@"imageurl"];
+    
+    [UIAppDelegate.socketIO sendEvent:@"jointable" withData:dict andAcknowledge:cb];
+    
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+}
+
+-(UITableViewCell*)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath{
+    NSString *MyIdentifier = @"MyIdentifier";
+    UITableViewCell *cell = (UITableViewCell*)[tableView dequeueReusableCellWithIdentifier:MyIdentifier];
+    
+    if(cell == nil){
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleValue1 reuseIdentifier:MyIdentifier];
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+        cell.backgroundColor = [Common makeColorWithRed:0 green:0 blue:0 alpha:0.8f];
+        UIView *bgColorView = [[UIView alloc] init];
+        bgColorView.backgroundColor = [Common makeColorWithRed:0 green:192 blue:195 alpha:0.8f];
+        [cell setSelectedBackgroundView:bgColorView];
+    }
+    
+    int section = [indexPath section];
+    int row = [indexPath row];
+    
+    NSLog(@"row: %d, section: %d", row, section);
+    
+    GameTable *table = (GameTable*)[gametablelist objectAtIndex:section];
+    
+   // NSLog(@"table name: %@", table.name);
+    
+    cell.textLabel.textColor = [UIColor whiteColor];
+    cell.textLabel.text = table.name;
+    cell.imageView.image = [UIImage imageNamed:@"tablerowicon.png"];
+    
+    return cell;
+}
+
+-(void)viewWillLayoutSubviews{
+    [super viewWillLayoutSubviews];
+    
+    
+}
+
+- (void)viewDidLoad
+{
+    [super viewDidLoad];
+    // Do any additional setup after loading the view.
+    gametablelist = [[NSMutableArray alloc] init];
+    
+     NSString* balance = [SSKeychain passwordForService:@"roulette" account:UIAppDelegate.g_facebookid];
+    if(balance == nil){
+        balance = [NSString stringWithFormat:@"%.02f", 1000.0f];
+        [SSKeychain setPassword:balance forService:@"roulette" account:UIAppDelegate.g_facebookid];
+    }
+    
+    NSLog(@"fucking bvalabce: %@",  balance);
+    
+    background = [[UIImageView alloc] initWithImage:[UIImage imageNamed:@"lobbybackground.png"]];
+    [background setUserInteractionEnabled:YES];
+    [self.view addSubview:background];
+    
+    lobbyTableView = [[UITableView alloc] initWithFrame:CGRectMake(0, 0, 0, 0) style:UITableViewStyleGrouped];
+    [lobbyTableView setBackgroundColor:[Common makeColorWithRed:0 green:52 blue:32 alpha:0.8f]];
+    [lobbyTableView setDelegate:self];
+    [lobbyTableView setDataSource:self];
+    [lobbyTableView setSeparatorStyle:UITableViewCellSeparatorStyleNone];
+    
+   
+    
+    lobbyTableView.layer.cornerRadius = 5;
+    lobbyTableView.layer.borderWidth = 2.0;
+    lobbyTableView.layer.borderColor = [UIColor whiteColor].CGColor;
+    
+    [self.view addSubview:lobbyTableView];
+    
+    SocketIOCallback listcb = ^(id argsData) {
+        
+        NSData *data = [argsData dataUsingEncoding:NSUTF8StringEncoding];
+        id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+        
+        NSLog(@"%@", json);
+        
+        [gametablelist removeAllObjects];
+        
+        for(NSDictionary* gametable in json){
+            GameTable *table = [[GameTable alloc] init];
+            table.name = [gametable objectForKey:@"name"];
+            NSLog(@"%@", table.name);
+            [gametablelist addObject:table];
+        }
+        
+        NSLog(@"tabels count: %d", [gametablelist count]);
+        
+        
+        [lobbyTableView reloadData];
+    };
+    
+    [UIAppDelegate.socketIO sendEvent:@"gettablelist" withData:nil andAcknowledge:listcb];
+}
+
+- (void)didReceiveMemoryWarning
+{
+    [super didReceiveMemoryWarning];
+    // Dispose of any resources that can be recreated.
+}
+
+
+
+@end

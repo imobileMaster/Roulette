@@ -1,0 +1,1 @@
+PODS_ROULETTE_TOAST_OTHER_LDFLAGS = -framework "QuartzCore"

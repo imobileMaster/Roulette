@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>IDESourceControlProjectFavoriteDictionaryKey</key>
+	<false/>
+	<key>IDESourceControlProjectIdentifier</key>
+	<string>5FCB9FA1-7241-4C2F-AD36-059097B2F928</string>
+	<key>IDESourceControlProjectName</key>
+	<string>roulette</string>
+	<key>IDESourceControlProjectOriginsDictionary</key>
+	<dict>
+		<key>d2f5abfd-62d6-4745-845d-58344f364528++2908</key>
+		<string>http://198.61.210.253/svn/roulette</string>
+	</dict>
+	<key>IDESourceControlProjectPath</key>
+	<string>roulette.xcworkspace</string>
+	<key>IDESourceControlProjectRelativeInstallPathDictionary</key>
+	<dict>
+		<key>d2f5abfd-62d6-4745-845d-58344f364528++2908</key>
+		<string>..</string>
+	</dict>
+	<key>IDESourceControlProjectRepositoryRootDictionary</key>
+	<dict>
+		<key>d2f5abfd-62d6-4745-845d-58344f364528++2908</key>
+		<string>http://198.61.210.253/svn</string>
+	</dict>
+	<key>IDESourceControlProjectURL</key>
+	<string>http://198.61.210.253/svn/roulette/roulette.xcworkspace</string>
+	<key>IDESourceControlProjectVersion</key>
+	<integer>111</integer>
+	<key>IDESourceControlProjectWCCIdentifier</key>
+	<string>d2f5abfd-62d6-4745-845d-58344f364528++2908</string>
+	<key>IDESourceControlProjectWCConfigurations</key>
+	<array>
+		<dict>
+			<key>IDESourceControlRepositoryExtensionIdentifierKey</key>
+			<string>public.vcs.subversion</string>
+			<key>IDESourceControlWCCIdentifierKey</key>
+			<string>d2f5abfd-62d6-4745-845d-58344f364528++2908</string>
+			<key>IDESourceControlWCCName</key>
+			<string>roulette</string>
+		</dict>
+	</array>
+</dict>
+</plist>

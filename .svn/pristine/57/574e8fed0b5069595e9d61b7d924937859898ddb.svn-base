@@ -1,0 +1,27 @@
+//
+//  RoulettePlayer.h
+//  roulette
+//
+//  Created by Greg Ellis on 2015-03-31.
+//  Copyright (c) 2015 ellis. All rights reserved.
+//
+
+#import <Foundation/Foundation.h>
+
+@class RouletteTable;
+@class RouletteChip;
+
+@interface RoulettePlayer : NSObject
+
+@property (nonatomic, strong) RouletteTable  *table;
+
+@property (nonatomic, assign) NSInteger playerId;
+@property (nonatomic, strong) NSString *name;
+@property (nonatomic, assign) NSInteger seatindex;
+@property (nonatomic, assign) double balance;
+@property (nonatomic, strong) NSString *avatarURL;
+
+-(void)placeChip:(RouletteChip*)chip atPosition:(NSInteger)placeindex;
+-(void)spinFinished;
+
+@end

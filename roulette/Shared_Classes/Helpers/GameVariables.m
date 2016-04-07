@@ -1,0 +1,21 @@
+//
+//  GameVariables.cpp
+//  slotsvip
+//
+//  Created by Greg Ellis on 2013-07-09.
+//  Copyright (c) 2013 ellis. All rights reserved.
+//
+
+#import "GameVariables.h"
+
+int mPaid;
+int mBet;
+int mCredit;
+bool bMusicOn;
+bool bNotificationsOn;
+int mHighScore;
+bool bSoundOn;
+bool bAdsEnabled;
+bool bFirstSession;
+NSDate *mLastBonusAwarded;
+

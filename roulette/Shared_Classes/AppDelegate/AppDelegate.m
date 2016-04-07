@@ -1,0 +1,573 @@
+//
+//  AppDelegate.m
+//  roulette
+//
+//  Created by Greg Ellis on 2014-02-07.
+//  Copyright (c) 2014 ellis. All rights reserved.
+//
+
+#import <objc/runtime.h>
+#import "AppDelegate.h"
+#import "Common.h"
+#import <SSKeychain/SSKeychain.h>
+
+#import "RouletteServer.h"
+#import "RouletteTable.h"
+#import "RoulettePlayer.h"
+
+@implementation AppDelegate
+@synthesize g_facebookid, g_fbname, socketIO, g_imgAvatar, g_seatindex, g_tablename, g_strAvatarURL;
+
+-(void)setBankroll:(double)amount{
+    NSUserDefaults *userDefaults = [NSUserDefaults standardUserDefaults];
+    mCredit = (NSInteger)amount;
+    [userDefaults setInteger:mCredit forKey:KEY_CREDIT];
+    [SSKeychain setPassword:[NSString stringWithFormat:@"%d", mCredit] forService:@"roulettegold" account:UIAppDelegate.g_facebookid];
+    [userDefaults synchronize];
+}
+
+-(void) saveGameVariables{
+    //Save money and sound setting
+	NSLog(@"Save game state....");
+	
+    [[UIApplication sharedApplication] setApplicationIconBadgeNumber:0];
+
+	NSUserDefaults *userDefaults = [NSUserDefaults standardUserDefaults];
+	[userDefaults setInteger:mBet forKey:KEY_BET];
+	[userDefaults setInteger:mCredit forKey:KEY_CREDIT];
+    [userDefaults setBool:bMusicOn forKey:KEY_MUSIC];
+    [userDefaults setBool:bNotificationsOn forKey:KEY_NOTIFICATIONS];
+    [userDefaults setInteger:mHighScore forKey:KEY_HIGHSCORE];
+	[userDefaults setInteger:mPaid forKey:KEY_PAID];
+	[userDefaults setBool:bSoundOn forKey:KEY_SOUND];
+    [userDefaults setObject:mLastBonusAwarded forKey:KEY_LASTBONUS_AWARDED];
+	[userDefaults synchronize];
+}
+
+// message delegate
+- (void) socketIO:(SocketIO *)socket didReceiveMessage:(SocketIOPacket *)packet
+{
+    //NSLog(@"didReceiveMessage >>> data: %@", packet.data);
+}
+
+-(void)finishSpin{
+    SocketIOCallback cb = ^(id argsData) {
+        NSDictionary *response = argsData;
+        // do something with response
+        NSLog(@"callback: %@", response);
+    };
+    
+    [socketIO sendEvent:@"spinfinish" withData:nil andAcknowledge:cb];
+}
+
+// event delegate
+- (void) socketIO:(SocketIO *)socket didReceiveEvent:(SocketIOPacket *)packet
+{
+    //NSLog(@"didReceiveEvent >>> data: %@", packet.data);
+    
+     NSDictionary *response = packet.dataAsJSON;
+    if([[response objectForKey:@"name"] isEqualToString:@"spin"]){
+        
+        NSInteger number = [[[response objectForKey:@"args"] objectAtIndex:0] integerValue];
+        NSDictionary * dict = [NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithInteger:number], @"number", nil];
+        [[NSNotificationCenter defaultCenter] postNotificationName:kStartSpin object:nil userInfo:dict];
+        
+        //NSLog(@"spin finished");
+        //[self performSelector:@selector(finishSpin) withObject:nil afterDelay:10.0];
+        
+    }
+    else if([[response objectForKey:@"name"] isEqualToString:@"servertime"]){
+        
+        
+        NSDate *date = [Common dateForRFC3339DateTimeString:[[response objectForKey:@"args"] objectAtIndex:0]];
+        NSDictionary * dict = [NSDictionary dictionaryWithObjectsAndKeys:date, @"datetime", nil];
+        [[NSNotificationCenter defaultCenter] postNotificationName:kServerTime object:nil userInfo:dict];
+    }
+    else if([[response objectForKey:@"name"] isEqualToString:@"timeleft"]){
+        double percentleft = [[[response objectForKey:@"args"] objectAtIndex:2] doubleValue];
+
+        
+        NSDictionary * dict = [NSDictionary dictionaryWithObjectsAndKeys:[NSNumber numberWithDouble:percentleft], @"percentLeft", nil];
+        [[NSNotificationCenter defaultCenter] postNotificationName:kBettingTimeLeft object:nil userInfo:dict];
+    }
+    else if([[response objectForKey:@"name"] isEqualToString:@"placeyourbets"]){
+        [[NSNotificationCenter defaultCenter] postNotificationName:kPlaceYourBets object:nil];
+    }
+    else if([[response objectForKey:@"name"] isEqualToString:@"joinedtable"]){
+        
+    }
+    else if([[response objectForKey:@"name"] isEqualToString:@"playerleft"]){
+        
+        [[NSNotificationCenter defaultCenter] postNotificationName:kPlayerLeft object:nil userInfo:[[response objectForKey:@"args"] objectAtIndex:0]];
+    }
+    else if([[response objectForKey:@"name"] isEqualToString:@"chip_placed"]){
+        
+        [[NSNotificationCenter defaultCenter] postNotificationName:kChipPlaced object:nil userInfo:[[response objectForKey:@"args"] objectAtIndex:0]];
+    }
+    else if([[response objectForKey:@"name"] isEqualToString:@"chips_placed"]){
+        
+        [[NSNotificationCenter defaultCenter] postNotificationName:kChipsPlaced object:nil userInfo:[[response objectForKey:@"args"] objectAtIndex:0]];
+    }
+    else if([[response objectForKey:@"name"] isEqualToString:@"all_chips_cleared"]){
+        
+        [[NSNotificationCenter defaultCenter] postNotificationName:kAllChipsCleared object:nil userInfo:[[response objectForKey:@"args"] objectAtIndex:0]];
+    }
+    else if([[response objectForKey:@"name"] isEqualToString:@"chips_cleared"]){
+        
+        [[NSNotificationCenter defaultCenter] postNotificationName:kChipsCleared object:nil userInfo:[[response objectForKey:@"args"] objectAtIndex:0]];
+    }
+    else if([[response objectForKey:@"name"] isEqualToString:@"playerjoined"]){
+        [[NSNotificationCenter defaultCenter] postNotificationName:kPlayerJoined object:nil];
+    }
+    else if([[response objectForKey:@"name"] isEqualToString:@"gettablelist"]){
+        
+    }
+}
+
+-(void)socketIODidConnect:(SocketIO *)socket{
+
+    NSLog(@"connected");
+}
+
+-(void)socketIO:(SocketIO *)socket onError:(NSError *)error{
+    NSLog(@"%@", [NSString stringWithFormat:@"error connecting: %@", error.localizedDescription]);
+}
+
+
+
+- (BOOL)application:(UIApplication *)application
+            openURL:(NSURL *)url
+  sourceApplication:(NSString *)sourceApplication
+         annotation:(id)annotation
+{
+    // Note this handler block should be the exact same as the handler passed to any open calls.
+    [FBSession.activeSession setStateChangeHandler:
+     ^(FBSession *session, FBSessionState state, NSError *error) {
+         
+         // Retrieve the app delegate
+         AppDelegate* appDelegate = (AppDelegate*)[UIApplication sharedApplication].delegate;
+         // Call the app delegate's sessionStateChanged:state:error method to handle session state changes
+         [appDelegate sessionStateChanged:session state:state error:error];
+     }];
+    return [FBAppCall handleOpenURL:url sourceApplication:sourceApplication];
+}
+
+- (void)sessionStateChanged:(FBSession *)session state:(FBSessionState) state error:(NSError *)error
+{
+    // If the session was opened successfully
+    if (!error && state == FBSessionStateOpen){
+        NSLog(@"Session opened");
+        // Show the user the logged-in UI
+        //[self userLoggedIn];
+        
+        [FBRequestConnection startForMeWithCompletionHandler:^(FBRequestConnection *connection, id<FBGraphUser> user, NSError *error) {
+            if(!error){
+                NSString *facebookid = @"";
+                NSString *name = @"";
+                NSString *email = @"";
+                //NSString *picture = @"";
+                NSString *gender = @"";
+                NSString *location = @"";
+                
+                facebookid = [NSString stringWithFormat:@"%@", user.objectID];
+                name = [NSString stringWithFormat:@"%@", user.name];
+                email = [NSString stringWithFormat:@"%@", [user objectForKey:@"email"]];
+                gender = [NSString stringWithFormat:@"%@", [user objectForKey:@"gender"]];
+                location = [NSString stringWithFormat:@"%@", [user objectForKey:@"location"]];
+                //picture = [NSString stringWithFormat:@"%@", [user objectForKey:@"picture"]];
+                self.g_facebookid = facebookid;
+                self.g_fbname = name;
+                NSLog(@"%@", user);
+                NSLog(@"%@, %@, %@, %@, %@", facebookid, name, email, gender, location);
+                
+                NSURL *url = [NSURL URLWithString:[NSString stringWithFormat:@"http://graph.facebook.com/%@/picture?type=large", facebookid]];
+                NSData *data = [NSData dataWithContentsOfURL:url];
+                self.g_strAvatarURL = [NSString stringWithFormat:@"http://graph.facebook.com/%@/picture?type=large", facebookid];
+                self.g_imgAvatar = [UIImage imageWithData:data scale:[[UIScreen mainScreen] scale]];
+                
+                name = [name stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding];
+                email = [email stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding];
+                location = [location stringByAddingPercentEscapesUsingEncoding:NSUTF8StringEncoding];
+                
+                [[NSNotificationCenter defaultCenter] postNotificationName:@"FacebookLoggedIn" object:nil];
+            }
+        }];
+        
+        return;
+    }
+    if (state == FBSessionStateClosed || state == FBSessionStateClosedLoginFailed){
+        // If the session is closed
+        NSLog(@"Session closed");
+        // Show the user the logged-out UI
+        //[self userLoggedOut];
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"FacebookLoggedOut" object:nil];
+    }
+    
+    // Handle errors
+    if (error){
+        NSLog(@"Error");
+        NSString *alertText;
+        NSString *alertTitle;
+        // If the error requires people using an app to make an action outside of the app in order to recover
+        if ([FBErrorUtility shouldNotifyUserForError:error] == YES){
+            alertTitle = @"Something went wrong";
+            alertText = [FBErrorUtility userMessageForError:error];
+            //[self showMessage:alertText withTitle:alertTitle];
+            NSLog(@"error");
+        } else {
+            
+            // If the user cancelled login, do nothing
+            if ([FBErrorUtility errorCategoryForError:error] == FBErrorCategoryUserCancelled) {
+                NSLog(@"User cancelled login");
+                
+                // Handle session closures that happen outside of the app
+            } else if ([FBErrorUtility errorCategoryForError:error] == FBErrorCategoryAuthenticationReopenSession){
+                alertTitle = @"Session Error";
+                alertText = @"Your current session is no longer valid. Please log in again.";
+                //[self showMessage:alertText withTitle:alertTitle];
+                NSLog(@"error");
+                
+                // Here we will handle all other errors with a generic error message.
+                // We recommend you check our Handling Errors guide for more information
+                // https://developers.facebook.com/docs/ios/errors/
+            } else {
+                //Get more error information from the error
+                NSDictionary *errorInformation = [[[error.userInfo objectForKey:@"com.facebook.sdk:ParsedJSONResponseKey"] objectForKey:@"body"] objectForKey:@"error"];
+                
+                // Show the user an error message
+                alertTitle = @"Something went wrong";
+                alertText = [NSString stringWithFormat:@"Please retry. \n\n If the problem persists contact us and mention this error code: %@", [errorInformation objectForKey:@"message"]];
+                //[self showMessage:alertText withTitle:alertTitle];
+                NSLog(@"error");
+            }
+        }
+        // Clear this token
+        [FBSession.activeSession closeAndClearTokenInformation];
+        // Show the user the logged-out UI
+        //[self userLoggedOut];
+        NSLog(@"user logged out");
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"FacebookLoggedOut" object:nil];
+    }
+}
+
+-(void)didConnect{
+    NSLog(@"did connect");
+}
+
+-(void)didConnectFailedWithError:(NSError *)error{
+    
+}
+
+-(void)didGetTableListFailedWithError:(NSError *)error{
+    
+}
+
+-(void)didGetTableList:(NSArray *)tables{
+    for (RouletteTable* table in tables) {
+        NSLog(@"table name: %@", table.name);
+    }
+}
+
+- (void) setObject:(id) object ValuesFromDictionary:(NSDictionary *) dictionary
+{
+    for (NSString *fieldName in dictionary) {
+        if(class_getProperty([object class], (const char*)[fieldName UTF8String]))
+            [object setValue:[dictionary objectForKey:fieldName] forKey:fieldName];
+    }
+}
+
+- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
+{
+    
+    
+    [FBSession.activeSession closeAndClearTokenInformation];
+    [[FBSession activeSession] close];
+    [FBSession setActiveSession:nil];
+    
+    [self setBankroll:1000];
+    
+   /* NSMutableArray *mychips = [[NSMutableArray alloc] init];
+    
+    Chip *chip = [[Chip alloc] init];
+    chip.seatindex = 3;
+    [mychips addObject:chip];
+    
+    chip = [[Chip alloc] init];
+    chip.seatindex = 1;
+    [mychips addObject:chip];
+    
+    chip = [[Chip alloc] init];
+    chip.seatindex = 0;
+    [mychips addObject:chip];
+    
+    NSInteger myseatindex = 0;
+    NSArray* sortedArray = [mychips sortedArrayUsingComparator:^NSComparisonResult(Chip *a, Chip* b) {
+        
+        if(a.seatindex == myseatindex)
+            return NSOrderedDescending;
+        
+        if(a.seatindex < b.seatindex)
+            return NSOrderedAscending;
+        else if(a.seatindex > b.seatindex)
+            return NSOrderedDescending;
+        
+        return NSOrderedSame;
+        
+    }];
+    
+    for (Chip* c in sortedArray) {
+        NSLog(@"%d", c.seatindex);
+    }*/
+    
+    
+    /*NSString *jsonString = @"[{\"name\":\"table1\",\"index\":0,\"gamestate\":\"idle\",\"players\":{},\"history\":[],\"betting_round_started\":\"2015-03-18T22:26:31.327Z\"},{\"name\":\"table2\",\"index\":1,\"gamestate\":\"idle\",\"players\":{},\"history\":[],\"betting_round_started\":\"2015-03-18T22:26:31.327Z\"},{\"name\":\"table3\",\"index\":2,\"gamestate\":\"idle\",\"players\":{},\"history\":[],\"betting_round_started\":\"2015-03-18T22:26:31.327Z\"}] ";
+    NSData *data = [jsonString dataUsingEncoding:NSUTF8StringEncoding];
+    id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    
+    for(NSDictionary* obj in json){
+        NSLog(@"%@", [obj objectForKey:@"name"]);
+        NSLog(@"%@", obj);
+    }*/
+    
+    
+    /*NSError* err;
+    RouletteChip* chip = [[RouletteChip alloc] initWithString:@"{\"value\":5.88, \"placeindex\":55}" error:&err];
+    
+    if(err){
+        NSLog(@"%@", err.description);
+    }
+    
+    int n = 0;*/
+    
+    
+    
+   /* NSMutableDictionary *tb = [NSMutableDictionary dictionary];
+    [tb setObject:@"vegas table" forKey:@"name"];
+    [tb setObject:[NSNumber numberWithInt:1] forKey:@"number"];
+    [tb setObject:[NSNumber numberWithInt:0] forKey:@"index"];
+    //[tb setObject:players forKey:@"players"];
+    
+    RouletteTable *table = [[RouletteTable alloc] init];
+    
+    
+    RouletteChip *ch = [[RouletteChip alloc] init];
+    NSMutableDictionary *dict = [NSMutableDictionary dictionary];
+    [dict setObject:[NSNumber numberWithDouble:5.6] forKey:@"value"];
+    [dict setObject:[NSNumber numberWithDouble:78.6] forKey:@"fuker"];
+    [self setObject:ch ValuesFromDictionary:dict];
+    
+    double d = ch.value;
+    
+    int n = 0;*/
+    
+    /*RoulettePlayer *p = [[RoulettePlayer alloc] init];
+    p.name = @"greg";
+    p.balance = [NSNumber numberWithDouble:4000.0f];
+    p.imageurl = @"http://www.co.com";
+    
+    server = [[RouletteServer alloc] init];
+    [server setDelegate:self];
+    [server connectPlayer:p toServer:@"68.149.248.80" onPort:8080];
+    
+    //[server getTableList];
+    
+    __block RouletteTable* tab;
+    [server getTableList:^(NSMutableArray *tables) {
+        for (RouletteTable* table in tables) {
+          
+            NSLog(@"block table name: %@", table.name);
+            tab = table;
+            
+           
+            
+ 
+            NSLog(@"seating: %@ at table: %@", p.name, p.name);
+            
+            [server sitAtTable:tab onSuccess:^(RouletteTable *table, NSNumber* seatindex) {
+                
+                NSLog(@"success");
+                
+                RouletteChip* chip = [[RouletteChip alloc] init];
+                chip.value = [NSNumber numberWithDouble:100.0f];
+                chip.placeindex = [NSNumber numberWithInteger:5];
+                [server placeChip:chip];
+                
+                NSMutableArray *chips = [[NSMutableArray alloc] init];
+                for(int i=0; i<5; i++){
+                    RouletteChip* chip = [[RouletteChip alloc] init];
+                    chip.value = [NSNumber numberWithDouble:100.0f];
+                    chip.placeindex = [NSNumber numberWithInteger:5];
+                    [chips addObject:chip];
+                }
+                
+                [server placeChips:(NSMutableArray<RouletteChip>*)chips];
+                [server clearChips:(NSMutableArray<RouletteChip>*)chips];
+                
+            } onFailure:^(NSError *error) {
+                NSLog(@"fail");
+            }];
+
+        }
+    } onError:^(NSError *error) {
+        NSLog(@"Error");
+    }];
+    */
+    
+    
+    
+    [[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryAmbient error:nil];
+    [[AVAudioSession sharedInstance] setActive:YES error:nil];
+    //[[AVAudioSession sharedInstance] setDelegate:self];
+    
+    self.g_facebookid = @"Guest";
+    self.g_fbname = [NSString stringWithFormat:@"Guest%d", arc4random()%10000];
+    srand48( getpid() );
+    
+    /* setup ad network ids */
+    bAdsEnabled = YES;
+    
+    [Flurry setCrashReportingEnabled:YES];
+    [Flurry startSession:FLURRY_APIKEY];
+    
+    [RevMobAds startSessionWithAppID:REVMOB_ID];
+    [ALSdk initializeSdk];
+    
+    [[Chartboost sharedChartboost] setDelegate:self];
+    [[Chartboost sharedChartboost] setAppId:CHARTBOOST_APPID];
+    [[Chartboost sharedChartboost] setAppSignature:CHARTBOOST_APPSIGNATURE];
+    
+    [[Chartboost sharedChartboost] startSession];
+    [[Chartboost sharedChartboost] cacheInterstitial];
+    [[Chartboost sharedChartboost] cacheMoreApps];
+    
+    /*for(NSString* family in [UIFont familyNames]) {
+            NSLog(@"%@", family);
+            for(NSString* name in [UIFont fontNamesForFamilyName: family]) {
+                NSLog(@"  %@", name);
+            }
+    }*/
+    
+    socketIO = [[SocketIO alloc] initWithDelegate:self];
+    //[socketIO connectToHost:@"198.61.210.253" onPort:8080];
+    [socketIO connectToHost:@"68.149.248.80" onPort:8080];
+    
+    
+   
+    
+    /*SocketIOCallback listcb = ^(id argsData) {
+        NSDictionary *response = argsData;
+        // do something with response
+        NSLog(@"tables: %@", response);
+    };
+    
+    [socketIO sendEvent:@"gettablelist" withData:nil andAcknowledge:listcb];*/
+    
+    
+    /*SocketIOCallback cb = ^(id argsData) {
+        NSDictionary *response = argsData;
+        // do something with response
+        NSLog(@"callback: %@", response);
+    };
+    
+    NSMutableDictionary *dict = [NSMutableDictionary dictionary];
+    [dict setObject:@"bitch" forKey:@"name"];
+    [dict setObject:@"3000" forKey:@"balance"];
+    [dict setObject:@"1" forKey:@"tablenumber"];
+    
+    
+    [socketIO sendEvent:@"jointable" withData:dict andAcknowledge:cb];*/
+    
+    
+    //[Common convertToCurrencyShort:1500000];
+    
+    return YES;
+}
+
+- (void)applicationWillResignActive:(UIApplication *)application
+{
+    // Sent when the application is about to move from active to inactive state. This can occur for certain types of temporary interruptions (such as an incoming phone call or SMS message) or when the user quits the application and it begins the transition to the background state.
+    // Use this method to pause ongoing tasks, disable timers, and throttle down OpenGL ES frame rates. Games should use this method to pause the game.
+}
+
+- (void)applicationDidEnterBackground:(UIApplication *)application
+{
+    [self saveGameVariables];
+}
+
+- (void)applicationWillEnterForeground:(UIApplication *)application
+{
+    // Called as part of the transition from the background to the inactive state; here you can undo many of the changes made on entering the background.
+}
+
+- (void)applicationDidBecomeActive:(UIApplication *)application
+{
+    
+    // Restart any tasks that were paused (or not yet started) while the application was inactive. If the application was previously in the background, optionally refresh the user interface.
+    [FBAppCall handleDidBecomeActive];
+}
+
+- (void)applicationWillTerminate:(UIApplication *)application
+{
+    [self saveGameVariables];
+}
+
+-(void)showadsnow{
+    
+    if(bAdsEnabled){
+
+        [[Chartboost sharedChartboost] showInterstitial];
+        
+        /*RevMobFullscreen* fullscreen = [[RevMobAds session] fullscreen];
+         fullscreen.delegate = self;
+         [fullscreen showAd];*/
+        
+        //[ALInterstitialAd showOver:[[UIApplication sharedApplication] keyWindow]];
+    }
+}
+
+#pragma mark REVMOB delegate
+- (void) dispAds {
+    [[RevMobAds session] showFullscreen];
+}
+
+- (void)revmobAdDidFailWithError:(NSError *)error {
+    [[Chartboost sharedChartboost] showInterstitial];
+}
+
+- (void)revmobUserClosedTheAd {
+    [[Chartboost sharedChartboost] showInterstitial];
+}
+
+- (void)installDidFail {
+    
+}
+
+#pragma mark chartboost delegate
+- (void) dispMoreApps {
+    [[Chartboost sharedChartboost] showMoreApps];
+}
+- (void)didFailToLoadInterstitial:(NSString *)location {
+    
+    //    [[RevMobAds session] showFullscreen];
+    [ALInterstitialAd showOver:[[UIApplication sharedApplication] keyWindow]];
+    
+}
+
+// Called when the user dismisses the interstitial
+// If you are displaying the add yourself, dismiss it now.
+- (void)didDismissInterstitial:(CBLocation)location {
+    
+    //    [[RevMobAds session] showFullscreen];
+    //[ALInterstitialAd showOver:[[UIApplication sharedApplication] keyWindow]];
+    
+}
+
+// Same as above, but only called when dismissed for a close
+- (void)didCloseInterstitial:(CBLocation)location {
+    
+    //    [[RevMobAds session] showFullscreen];
+    [ALInterstitialAd showOver:[[UIApplication sharedApplication] keyWindow]];
+    
+}
+
+@end
